@@ -15,13 +15,33 @@ class Quote_Plugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.quotes_data_path = os.path.join('data', "quotes_data")
-        
+
         # 从 astrbot 配置文件中获取管理员ID列表
         bot_config = context.get_config()
         admins = bot_config.get("admins_id", [])
         # 确保所有ID都是字符串格式
         self.admins = [str(admin) for admin in admins] if admins else []
-        
+
+        # 注册 WebUI 后端 API (issue #5: 列表/删除/移动/上传/群设置).
+        # 如果该 AstrBot 版本尚未提供 register_web_api, 静默降级, 原指令功能不受影响.
+        try:
+            from .webui_backend import WebUIHandlers
+        except (ImportError, ValueError):
+            try:
+                from webui_backend import WebUIHandlers
+            except ImportError:
+                WebUIHandlers = None
+        if WebUIHandlers is not None:
+            try:
+                self._webui = WebUIHandlers(plugin_name="quote_collocter")
+                self._webui.register(context)
+                logger.info("[quote_collocter] WebUI 后端 API 注册完成 (/api/plug/quote_collocter/...)")
+            except Exception as e:
+                logger.warning(f"[quote_collocter] WebUI 后端 API 注册失败: {e}")
+        else:
+            self._webui = None
+            logger.info("[quote_collocter] 未找到 webui_backend, 跳过 WebUI API 注册")
+
         if self.admins:
             logger.info(f'从 astrbot 配置中获取到管理员ID列表: {self.admins}')
         else:
@@ -40,7 +60,7 @@ class Quote_Plugin(Star):
         group_folder_path = os.path.join(self.quotes_data_path, group_id)
         if not os.path.exists(group_folder_path):
             os.makedirs(group_folder_path)
-        
+
     def random_image_from_folder(self, folder_path):
         if not os.path.exists(folder_path): # 增加判断文件夹是否存在的逻辑
             return None
@@ -86,7 +106,7 @@ class Quote_Plugin(Star):
         if msg:
             match = re.search(r"[-+]?\d*\.?\d+", msg)
             if match:
-                value = match.group()    
+                value = match.group()
         return value
 
     #region 下载语录图片
@@ -103,13 +123,13 @@ class Quote_Plugin(Star):
 
             message_obj = event.message_obj
             image_obj = None
-            
+
             # 尝试从当前消息中找到 Image 对象
             for i in message_obj.message:
                 if isinstance(i, Image):
                     image_obj = i
                     break
-            
+
             if image_obj:
                 file_path = await image_obj.convert_to_file_path()
                 if file_path:
@@ -134,7 +154,7 @@ class Quote_Plugin(Star):
 
             if download_by_file_failed == 1 :
                 result = await client.api.call_action('get_image', **payloads)
-                
+
                 file_path = result.get('file')
                 if file_path and os.path.exists(file_path):
                     logger.info(f"尝试从协议端api返回的路径{file_path}读取图片")
@@ -190,7 +210,7 @@ class Quote_Plugin(Star):
 
         if not os.path.exists(group_folder_path):
             self.create_group_folder(group_id)
-        self.admin_settings_path = os.path.join(group_folder_path, 'admin_settings.yml') 
+        self.admin_settings_path = os.path.join(group_folder_path, 'admin_settings.yml')
         if not os.path.exists(self.admin_settings_path):
             self._create_admin_settings_file()
         self.admin_settings = self._load_admin_settings()
@@ -232,14 +252,41 @@ class Quote_Plugin(Star):
                 self.admin_settings['coldown'] = 10
             self._save_admin_settings()
             yield event.plain_result(f"⭐戳戳冷却设置成功，当前值为：{self.admin_settings['coldown']}秒")
-        
+
+        # --- 新增：戳戳时发送语录的自定义概率 (issue #4) ---
+        elif msg.startswith("戳戳概率"):
+            if not self.is_admin(user_id):
+                yield event.plain_result("权限不足，仅可由bot管理员设置")
+                return
+            raw = self.gain_mode(event)
+            if not raw:
+                yield event.plain_result(
+                    f"⭐请输入“戳戳概率+数字”来设置，范围 0.0 - 1.0\n"
+                    f"  0.0 = 永远不发送语录\n"
+                    f"  1.0 = 永远发送语录\n"
+                    f"当前值：{self.admin_settings.get('poke_probability', 0.85)}"
+                )
+                return
+            try:
+                prob = float(raw)
+            except ValueError:
+                yield event.plain_result("⭐戳戳概率格式错误，请输入 0.0 - 1.0 之间的小数")
+                return
+            if prob < 0.0 or prob > 1.0:
+                yield event.plain_result("⭐戳戳概率超出范围，请输入 0.0 - 1.0 之间的小数")
+                return
+            self.admin_settings['poke_probability'] = prob
+            self._save_admin_settings()
+            yield event.plain_result(f"⭐戳戳概率设置成功，当前值为：{prob}")
+        # --------------------------------------------
+
         # --- 新增：随机语录指令 ---
         elif msg == "/语录" or msg == "语录":
             group_folder_path = os.path.join(self.quotes_data_path, group_id)
             selected_image_path = None
             if os.path.exists(group_folder_path):
                 selected_image_path = self.random_image_from_folder(group_folder_path)
-            
+
             if selected_image_path:
                 yield event.image_result(selected_image_path)
             else:
@@ -255,13 +302,13 @@ class Quote_Plugin(Star):
                 if not self.is_admin(user_id):
                     yield event.plain_result("⭐权限不足，当前权限设置为“仅bot管理员可投稿”\n可由bot管理员发送“投稿权限”来设置")
                     return
-            
+
             file_id = None
-            
+
             # 1. 检查当前消息中是否有图片
             messages = event.message_obj.message
             image_comp = next((msg for msg in messages if isinstance(msg, Image)), None)
-            
+
             if image_comp:
                 file_id = image_comp.file
             else:
@@ -272,7 +319,7 @@ class Quote_Plugin(Star):
                         logger.info(f"检测到引用回复，尝试获取消息ID: {reply_comp.id}")
                         reply_id = int(reply_comp.id) if str(reply_comp.id).isdigit() else reply_comp.id
                         reply_msg = await event.bot.api.call_action('get_msg', message_id=reply_id)
-                        
+
                         if reply_msg and 'message' in reply_msg:
                             chain = reply_msg['message']
                             if isinstance(chain, list):
@@ -295,14 +342,14 @@ class Quote_Plugin(Star):
                 ]
                 yield event.chain_result(chain)
                 return
-                            
+
             try:
                 self.create_group_folder(group_id)
                 # 下载并保存图片
                 try:
                     file_path = await self.download_image(event, file_id, group_id)
                     msg_id = str(event.message_obj.message_id)
-                    
+
                     if file_path and os.path.exists(file_path):
                         chain = [
                             Reply(id=msg_id),
@@ -332,7 +379,7 @@ class Quote_Plugin(Star):
 
                 if not os.path.exists(group_folder_path):
                     self.create_group_folder(group_id)
-                self.admin_settings_path = os.path.join(group_folder_path, 'admin_settings.yml') 
+                self.admin_settings_path = os.path.join(group_folder_path, 'admin_settings.yml')
                 if not os.path.exists(self.admin_settings_path):
                     self._create_admin_settings_file()
                 self.admin_settings = self._load_admin_settings()
@@ -344,19 +391,22 @@ class Quote_Plugin(Star):
                     self.admin_settings['last_poke'] = time.time()
                     self._save_admin_settings()
                     if str(target_id) == str(bot_id):
-                        if random.random() < 0.85:
+                        # issue #4: poke_probability 现在可配置, 默认 0.85 保持向后兼容
+                        poke_probability = float(self.admin_settings.get('poke_probability', 0.85))
+                        poke_probability = max(0.0, min(1.0, poke_probability))
+                        if random.random() < poke_probability:
                             group_folder_path = os.path.join(self.quotes_data_path, group_id)
                             selected_image_path = None
                             if os.path.exists(group_folder_path):
                                 selected_image_path = self.random_image_from_folder(group_folder_path)
-                            
+
                             # === 修改开始：无语录时静默 ===
                             if not selected_image_path:
                                 return # 直接返回，不发送任何消息
                             # === 修改结束 ===
-                            
+
                             yield event.image_result(selected_image_path)
-                        else:                   
+                        else:
                             texts = [
                                 "\n再戳的话......说不定下一张就是你的！",
                                 "\n我会一直一直看着你👀",
