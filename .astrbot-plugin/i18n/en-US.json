@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "display_name": "Quote Collector"
+  },
+  "pages": {
+    "quote-gallery": {
+      "title": "Quote Manager",
+      "desc": "Browse, delete, move and upload your group's quote / meme images."
+    }
+  }
+}

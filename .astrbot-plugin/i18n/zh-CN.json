@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "display_name": "语录投稿 (Quote Collector)"
+  },
+  "pages": {
+    "quote-gallery": {
+      "title": "语录管理",
+      "desc": "浏览、删除、移动和上传群友投稿的黑历史图片。"
+    }
+  }
+}

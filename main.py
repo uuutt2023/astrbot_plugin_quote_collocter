@@ -10,18 +10,30 @@ from astrbot.core.message.components import Image, Reply, At, Plain
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
 from astrbot.api.all import *
 
-@register("quote_collocter", "浅夏旧入梦", "发送“语录投稿+图片”或回复图片发送“语录投稿”来存储群友的黑历史！发送“/语录”随机查看一条。bot会在被戳一戳时随机发送一张语录", "1.5")
+@register("quote_collocter", "浅夏旧入梦", "发送“语录投稿+图片”或回复图片发送“语录投稿”来存储群友的黑历史！发送“/语录”随机查看一条。bot会在被戳一戳时随机发送一张语录。WebUI: 进入 AstrBot Dashboard -> 插件 -> 语录管理。", "1.6")
 class Quote_Plugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.quotes_data_path = os.path.join('data', "quotes_data")
-        
+
         # 从 astrbot 配置文件中获取管理员ID列表
         bot_config = context.get_config()
         admins = bot_config.get("admins_id", [])
         # 确保所有ID都是字符串格式
         self.admins = [str(admin) for admin in admins] if admins else []
-        
+
+        # 注册 WebUI 后端 API
+        try:
+            from .webui_backend import WebUIHandlers
+        except ImportError:
+            from webui_backend import WebUIHandlers
+        self._webui = WebUIHandlers(plugin_name="quote_collocter")
+        try:
+            self._webui.register(context)
+            logger.info("[quote_collocter] WebUI 后端 API 注册完成 (/api/plug/quote_collocter/...)")
+        except Exception as e:
+            logger.warning(f"[quote_collocter] WebUI 后端 API 注册失败: {e}")
+
         if self.admins:
             logger.info(f'从 astrbot 配置中获取到管理员ID列表: {self.admins}')
         else:
