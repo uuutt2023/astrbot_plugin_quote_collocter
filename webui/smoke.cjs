@@ -53,5 +53,13 @@ if (code.length > 2 * 1024 * 1024) {
 }
 console.log('OK [4/4] size within budget');
 
+// 5. regression: ensure no leftover `env.status` (the old envelope check
+// that caused "load failed" because bridge returns data unwrapped already)
+if (/\benv\.status\b/.test(code)) {
+  console.error('FAIL [5/5]: bundle still references env.status (regression!)');
+  process.exit(1);
+}
+console.log('OK [5/5] no env.status reference (envelope correctly removed)');
+
 console.log('All smoke tests passed.');
 

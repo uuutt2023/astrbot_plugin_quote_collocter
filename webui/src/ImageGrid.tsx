@@ -41,9 +41,7 @@ export function ImageGrid() {
     queryKey: ["images", selectedGroup, page, pageSize, search],
     queryFn: async () => {
       if (!selectedGroup) return null;
-      const env = await API.images(selectedGroup, page, pageSize, search);
-      if (env.status !== "ok") throw new Error(env.message);
-      return env.data;
+      return await API.images(selectedGroup, page, pageSize, search);
     },
     enabled: !!selectedGroup,
   });
@@ -86,16 +84,16 @@ export function ImageGrid() {
       okType: "danger",
       cancelText: t(ctx, "preview.close"),
       onOk: async () => {
-        const env = await API.deleteImages(selectedGroup, names);
-        if (env.status !== "ok") {
-          message.error(env.message || t(ctx, "error.delete"));
-          return;
+        try {
+          const res = await API.deleteImages(selectedGroup, names);
+          message.success(t(ctx, "settings.saved") + ` (${res.deleted.length}/${names.length})`);
+          clearSelection();
+          qc.invalidateQueries({ queryKey: ["images", selectedGroup] });
+          qc.invalidateQueries({ queryKey: ["groups"] });
+          qc.invalidateQueries({ queryKey: ["overview"] });
+        } catch (e: any) {
+          message.error(e?.message || t(ctx, "error.delete"));
         }
-        message.success(t(ctx, "settings.saved") + ` (${env.data.deleted.length}/${names.length})`);
-        clearSelection();
-        qc.invalidateQueries({ queryKey: ["images", selectedGroup] });
-        qc.invalidateQueries({ queryKey: ["groups"] });
-        qc.invalidateQueries({ queryKey: ["overview"] });
       },
     });
   }

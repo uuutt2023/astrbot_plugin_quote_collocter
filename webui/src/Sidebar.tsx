@@ -16,8 +16,7 @@ export function Sidebar() {
     queryKey: ["groups"],
     queryFn: async () => {
       const env = await API.groups();
-      if (env.status !== "ok") throw new Error(env.message || "load failed");
-      return env.data.groups as GroupInfo[];
+      return env.groups as GroupInfo[];
     },
     refetchOnWindowFocus: false,
   });

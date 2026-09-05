@@ -19,9 +19,8 @@ export function StatsCards() {
   const { data, isLoading } = useQuery({
     queryKey: ["overview"],
     queryFn: async () => {
-      const env = await API.overview();
-      if (env.status !== "ok") throw new Error(env.message);
-      return env.data as OverviewResp;
+      const data = await API.overview();
+      return data as OverviewResp;
     },
     refetchOnWindowFocus: false,
   });

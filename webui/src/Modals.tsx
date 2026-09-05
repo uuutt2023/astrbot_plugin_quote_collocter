@@ -31,9 +31,9 @@ export function PreviewModal() {
       if (thumb) setUrl(thumb);
       // 另存原图链接 (用于下载)
       try {
-        const env = await API.rawImage(preview.group, preview.name);
-        if (env.status === "ok") {
-          setDownloadUrl(`data:${env.data.mime};base64,${env.data.b64}`);
+        const data = await API.rawImage(preview.group, preview.name);
+        if (data && data.b64 && data.mime) {
+          setDownloadUrl(`data:${data.mime};base64,${data.b64}`);
         }
       } catch {}
       setLoading(false);
@@ -91,9 +91,8 @@ export function SettingsModal() {
     queryKey: ["settings", selectedGroup],
     queryFn: async () => {
       if (!selectedGroup) return null;
-      const env = await API.getSettings(selectedGroup);
-      if (env.status !== "ok") throw new Error(env.message);
-      return env.data.settings;
+      const data = await API.getSettings(selectedGroup);
+      return data.settings;
     },
     enabled: !!selectedGroup && show,
   });
@@ -115,14 +114,14 @@ export function SettingsModal() {
       onOk={async () => {
         const v = await form.validateFields();
         if (!selectedGroup) return;
-        const env = await API.updateSettings(selectedGroup, v);
-        if (env.status !== "ok") {
-          message.error(env.message || t(ctx, "error.saveSettings"));
-          return;
+        try {
+          await API.updateSettings(selectedGroup, v);
+          message.success(t(ctx, "settings.saved"));
+          qc.invalidateQueries({ queryKey: ["settings", selectedGroup] });
+          setShow(false);
+        } catch (e: any) {
+          message.error(e?.message || t(ctx, "error.saveSettings"));
         }
-        message.success(t(ctx, "settings.saved"));
-        qc.invalidateQueries({ queryKey: ["settings", selectedGroup] });
-        setShow(false);
       }}
       destroyOnClose
     >
@@ -173,18 +172,19 @@ export function MoveModal() {
           return;
         }
         setLoading(true);
-        const env = await API.moveImages(selectedGroup, dst.trim(), Array.from(selectedImages));
-        setLoading(false);
-        if (env.status !== "ok") {
-          message.error(env.message || t(ctx, "error.move"));
-          return;
+        try {
+          const res = await API.moveImages(selectedGroup, dst.trim(), Array.from(selectedImages));
+          message.success(`${res.moved.length} moved`);
+          clearSelection();
+          qc.invalidateQueries({ queryKey: ["images", selectedGroup] });
+          qc.invalidateQueries({ queryKey: ["groups"] });
+          qc.invalidateQueries({ queryKey: ["overview"] });
+          setShow(false);
+        } catch (e: any) {
+          message.error(e?.message || t(ctx, "error.move"));
+        } finally {
+          setLoading(false);
         }
-        message.success(`${env.data.moved.length} moved`);
-        clearSelection();
-        qc.invalidateQueries({ queryKey: ["images", selectedGroup] });
-        qc.invalidateQueries({ queryKey: ["groups"] });
-        qc.invalidateQueries({ queryKey: ["overview"] });
-        setShow(false);
       }}
       confirmLoading={loading}
       destroyOnClose
@@ -221,9 +221,8 @@ export function UploadModal() {
     for (const f of fileList) {
       const origin = f.originFileObj || f;
       try {
-        const env = await API.upload(selectedGroup, origin);
-        if (env.status === "ok") ok++;
-        else fail++;
+        await API.upload(selectedGroup, origin);
+        ok++;
       } catch (e) {
         fail++;
       }

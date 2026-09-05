@@ -54,8 +54,7 @@ export const API = {
   renameImage: (group_id: string, old_name: string, new_name: string) =>
     apiPost<{ new_name: string }>("images/rename", { group_id, old_name, new_name }),
   upload: async (group_id: string, file: File) => {
-    // 后端 multipart 需要走特殊 path; 我们使用 form-data 但 bridge.upload 走的是 files:upload
-    // 因为本插件暂未在后端实现 multipart handler, 改用 base64 + images/upload (x-www-form-urlencoded)
+    // 通过 bridge.upload -> dashboard 转成 multipart/form-data 'file' 字段
     return uploadFile("images/upload", file);
   },
 };
@@ -72,11 +71,10 @@ export async function loadThumb(group_id: string, name: string, size = 320): Pro
   const key = `${group_id}/${name}@${size}`;
   if (thumbCache.has(key)) return thumbCache.get(key)!;
   try {
-    const env = await API.thumb(group_id, name, size);
-    if (env.status !== "ok") return null;
-    const url = `data:${env.data.mime};base64,${env.data.b64}`;
+    const data = await API.thumb(group_id, name, size);
+    if (!data || !data.b64 || !data.mime) return null;
+    const url = `data:${data.mime};base64,${data.b64}`;
     if (thumbCache.size >= MAX_CACHE) {
-      // drop oldest
       const firstKey = thumbCache.keys().next().value;
       if (firstKey) thumbCache.delete(firstKey);
     }

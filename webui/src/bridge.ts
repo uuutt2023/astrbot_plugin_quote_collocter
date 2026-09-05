@@ -66,26 +66,26 @@ export function tFromCtx(ctx: BridgeContext | null, key: string, fallback: strin
   return fallback;
 }
 
-export type ApiEnvelope<T> = {
-  status: "ok" | "error";
-  message: string;
-  data: T;
-  _status?: number;
-};
-
-export async function apiGet<T = any>(endpoint: string, params?: Record<string, any>): Promise<ApiEnvelope<T>> {
+/**
+ * Wrap a raw bridge call. The dashboard's `handleBridgeRequest` already
+ * unwraps the backend envelope and resolves with `data` only, but it ALSO
+ * rejects with `Error(message)` when backend status is "error". So we just
+ * return the raw data and let the caller treat it as T. If the backend
+ * returns an error, the bridge promise rejects and React Query catches it.
+ */
+export async function apiGet<T = any>(endpoint: string, params?: Record<string, any>): Promise<T> {
   const b = getBridge();
   if (!b) throw new Error("Bridge not available - this page must be opened via AstrBot dashboard");
-  return b.apiGet(endpoint, params);
+  return (await b.apiGet(endpoint, params)) as T;
 }
 
-export async function apiPost<T = any>(endpoint: string, body?: Record<string, any>): Promise<ApiEnvelope<T>> {
+export async function apiPost<T = any>(endpoint: string, body?: Record<string, any>): Promise<T> {
   const b = getBridge();
   if (!b) throw new Error("Bridge not available");
-  return b.apiPost(endpoint, body);
+  return (await b.apiPost(endpoint, body)) as T;
 }
 
-export async function uploadFile(endpoint: string, file: File): Promise<ApiEnvelope<any>> {
+export async function uploadFile(endpoint: string, file: File): Promise<any> {
   const b = getBridge();
   if (!b) throw new Error("Bridge not available");
   return b.upload(endpoint, file);
