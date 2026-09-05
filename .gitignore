@@ -11,3 +11,6 @@ node_modules/
 *.tmp
 .tmp/
 data/
+
+# Dev / build helpers (not part of plugin distribution)
+push.cmd
